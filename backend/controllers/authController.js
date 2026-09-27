@@ -10,72 +10,116 @@ function generateToken(user) {
   );
 }
 
-// POST /api/auth/register — self-serve for both admin and participant
-// accounts. role in the request body picks which; anything other than
-// "admin" is treated as "participant". PRN is only required/stored for
-// participant accounts.
+// POST /api/auth/register
+// Public registration is only for participant accounts.
+// Admin accounts must be created separately by the system/admin.
 async function register(req, res) {
   try {
-    const { name, email, password, prn, role, interests } = req.body;
-    const accountRole = role === 'admin' ? 'admin' : 'participant';
+    const { name, email, password, prn, interests } = req.body;
+
+    // Public registration always creates a participant.
+    const accountRole = 'participant';
 
     if (!name || !email || !password) {
-      return res.status(400).json({ message: 'name, email and password are required.' });
+      return res.status(400).json({
+        message: 'name, email and password are required.'
+      });
     }
-    if (accountRole === 'participant' && !prn) {
-      return res.status(400).json({ message: 'prn is required for participant accounts.' });
+
+    if (!prn) {
+      return res.status(400).json({
+        message: 'prn is required for participant accounts.'
+      });
     }
 
     const existingEmail = await userModel.findByEmail(email);
+
     if (existingEmail) {
-      return res.status(409).json({ message: 'An account with this email already exists.' });
+      return res.status(409).json({
+        message: 'An account with this email already exists.'
+      });
     }
 
-    if (accountRole === 'participant') {
-      const existingPrn = await userModel.findByPrn(prn);
-      if (existingPrn) {
-        return res.status(409).json({ message: 'An account with this PRN already exists.' });
-      }
+    const existingPrn = await userModel.findByPrn(prn);
+
+    if (existingPrn) {
+      return res.status(409).json({
+        message: 'An account with this PRN already exists.'
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const storedPrn = accountRole === 'participant' ? prn : null;
-    const storedInterests = accountRole === 'participant' ? (interests || null) : null;
+
+    const storedPrn = prn;
+    const storedInterests = interests || null;
+
     const userId = await userModel.createUser({
-      name, email, passwordHash, role: accountRole, prn: storedPrn, interests: storedInterests,
+      name,
+      email,
+      passwordHash,
+      role: accountRole,
+      prn: storedPrn,
+      interests: storedInterests
     });
 
-    const token = generateToken({ id: userId, role: accountRole });
+    const token = generateToken({
+      id: userId,
+      role: accountRole
+    });
 
     res.status(201).json({
       message: 'Registration successful.',
       token,
-      user: { id: userId, name, email, prn: storedPrn, interests: storedInterests, role: accountRole },
+      user: {
+        id: userId,
+        name,
+        email,
+        prn: storedPrn,
+        interests: storedInterests,
+        role: accountRole
+      }
     });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Something went wrong during registration.' });
+
+    res.status(500).json({
+      message: 'Something went wrong during registration.'
+    });
   }
 }
 
-// POST /api/auth/login — works for both admin and participant; the role
-// comes from whatever is stored on the user row, not from the request.
+
+// POST /api/auth/login
+// Works for both admin and participant.
+// The role comes from the stored user record.
 async function login(req, res) {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: 'email and password are required.' });
+      return res.status(400).json({
+        message: 'email and password are required.'
+      });
     }
 
     const user = await userModel.findByEmail(email);
+
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      return res.status(401).json({
+        message: 'Invalid email or password.'
+      });
     }
 
-    const passwordMatches = await bcrypt.compare(password, user.password_hash);
+    const passwordMatches = await bcrypt.compare(
+      password,
+      user.password_hash
+    );
+
     if (!passwordMatches) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      return res.status(401).json({
+        message: 'Invalid email or password.'
+      });
     }
 
     const token = generateToken(user);
@@ -88,41 +132,78 @@ async function login(req, res) {
         name: user.name,
         email: user.email,
         role: user.role,
-        prn: user.prn,
-      },
+        prn: user.prn
+      }
     });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Something went wrong during login.' });
+
+    res.status(500).json({
+      message: 'Something went wrong during login.'
+    });
   }
 }
 
-// GET /api/auth/me — quick sanity check that a token works and to fetch
-// the logged-in user's own details (used for "My Status" pages later).
+
+// GET /api/auth/me
 async function getProfile(req, res) {
   try {
     const user = await userModel.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found.'
+      });
+    }
+
     res.json({ user });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Something went wrong.' });
+
+    res.status(500).json({
+      message: 'Something went wrong.'
+    });
   }
 }
 
-// PATCH /api/auth/interests — participant only. Body: { "interests": "AI,music,coding" }
+
+// PATCH /api/auth/interests
+// Participant only.
 async function updateInterests(req, res) {
   try {
     if (req.user.role !== 'participant') {
-      return res.status(403).json({ message: 'Only participants have interests.' });
+      return res.status(403).json({
+        message: 'Only participants have interests.'
+      });
     }
+
     const { interests } = req.body;
-    await userModel.updateInterests(req.user.id, interests || null);
-    res.json({ message: 'Interests updated.', interests: interests || null });
+
+    await userModel.updateInterests(
+      req.user.id,
+      interests || null
+    );
+
+    res.json({
+      message: 'Interests updated.',
+      interests: interests || null
+    });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Failed to update interests.' });
+
+    res.status(500).json({
+      message: 'Failed to update interests.'
+    });
   }
 }
 
-module.exports = { register, login, getProfile, updateInterests };
+
+module.exports = {
+  register,
+  login,
+  getProfile,
+  updateInterests
+};

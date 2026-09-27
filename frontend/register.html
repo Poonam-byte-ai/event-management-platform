@@ -3,145 +3,177 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Create account — Event Management Platform</title>
+<title>Create Account — Event Management Platform</title>
 <link rel="stylesheet" href="css/style.css">
-<style>
-  .role-toggle {
-    display: flex;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    margin-bottom: 20px;
-  }
-  .role-toggle button {
-    flex: 1;
-    padding: 9px 0;
-    border: none;
-    background: #fff;
-    color: var(--text-muted);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .role-toggle button.active {
-    background: var(--accent);
-    color: #fff;
-  }
-</style>
 </head>
+
 <body>
 
 <div class="auth-shell">
   <div class="auth-card">
-    <h1 id="pageTitle">Create your account</h1>
-    <p class="subtitle" id="pageSubtitle">For students registering for events</p>
 
-    <div class="role-toggle">
-      <button type="button" id="tabParticipant" class="active">Participant</button>
-      <button type="button" id="tabAdmin">Organizer (Admin)</button>
-    </div>
+    <h1>Create your account</h1>
+
+    <p class="subtitle">
+      Register as a participant to join events.
+    </p>
 
     <div id="msg" class="msg"></div>
 
     <form id="registerForm">
+
       <div class="field">
         <label for="name">Full name</label>
-        <input type="text" id="name" required>
+        <input
+          type="text"
+          id="name"
+          required
+          autocomplete="name"
+        >
       </div>
-      <div class="field" id="prnField">
+
+      <div class="field">
         <label for="prn">PRN / Student ID</label>
-        <input type="text" id="prn">
+        <input
+          type="text"
+          id="prn"
+          required
+        >
       </div>
-      <div class="field" id="interestsField">
-        <label for="interests">Interests (comma-separated, e.g. "AI, music, coding")</label>
-        <input type="text" id="interests" placeholder="AI, coding, music">
+
+      <div class="field">
+        <label for="interests">
+          Interests (comma-separated, e.g. "AI, music, coding")
+        </label>
+
+        <input
+          type="text"
+          id="interests"
+          placeholder="AI, coding, music"
+        >
       </div>
+
       <div class="field">
         <label for="email">Email</label>
-        <input type="email" id="email" required autocomplete="username">
+
+        <input
+          type="email"
+          id="email"
+          required
+          autocomplete="username"
+        >
       </div>
+
       <div class="field">
         <label for="password">Password</label>
-        <input type="password" id="password" required autocomplete="new-password">
+
+        <input
+          type="password"
+          id="password"
+          required
+          autocomplete="new-password"
+        >
       </div>
-      <button type="submit" class="btn btn-block" id="submitBtn">Create account</button>
+
+      <button
+        type="submit"
+        class="btn btn-block"
+        id="submitBtn"
+      >
+        Create account
+      </button>
+
     </form>
 
-    <p class="subtitle" style="margin-top:18px; margin-bottom:0;">
-      Already have an account? <a href="login.html">Log in</a> · <a href="index.html">Back to home</a>
+    <p
+      class="subtitle"
+      style="margin-top:18px; margin-bottom:0;"
+    >
+      Already have an account?
+      <a href="login.html">Log in</a>
+      ·
+      <a href="index.html">Back to home</a>
     </p>
+
   </div>
 </div>
 
 <script src="js/api.js"></script>
+
 <script>
+
+  // If the user is already logged in,
+  // redirect them to the appropriate dashboard.
   if (getToken()) {
-    window.location.href = getRole() === 'admin' ? 'admin-dashboard.html' : 'participant-dashboard.html';
+    window.location.href =
+      getRole() === 'admin'
+        ? 'admin-dashboard.html'
+        : 'participant-dashboard.html';
   }
-
-  const tabParticipant = document.getElementById('tabParticipant');
-  const tabAdmin = document.getElementById('tabAdmin');
-  const prnField = document.getElementById('prnField');
-  const prnInput = document.getElementById('prn');
-  const pageTitle = document.getElementById('pageTitle');
-  const pageSubtitle = document.getElementById('pageSubtitle');
-  const submitBtn = document.getElementById('submitBtn');
-
-  let role = 'participant';
-
-  function setRole(r) {
-    role = r;
-    if (r === 'admin') {
-      tabAdmin.classList.add('active');
-      tabParticipant.classList.remove('active');
-      prnField.style.display = 'none';
-      prnInput.required = false;
-      document.getElementById('interestsField').style.display = 'none';
-      pageTitle.textContent = 'Create an organizer account';
-      pageSubtitle.textContent = 'For admins who create and manage events';
-      submitBtn.textContent = 'Create admin account';
-    } else {
-      tabParticipant.classList.add('active');
-      tabAdmin.classList.remove('active');
-      prnField.style.display = 'block';
-      prnInput.required = true;
-      document.getElementById('interestsField').style.display = 'block';
-      pageTitle.textContent = 'Create your account';
-      pageSubtitle.textContent = 'For students registering for events';
-      submitBtn.textContent = 'Create account';
-    }
-  }
-
-  tabParticipant.addEventListener('click', () => setRole('participant'));
-  tabAdmin.addEventListener('click', () => setRole('admin'));
-
-  // Allow index.html to link here with ?role=admin preselected.
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('role') === 'admin') setRole('admin');
 
   const form = document.getElementById('registerForm');
   const msg = document.getElementById('msg');
+  const submitBtn = document.getElementById('submitBtn');
 
   form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    showMessage(msg, '');
-    submitBtn.disabled = true;
 
-    const name = document.getElementById('name').value.trim();
-    const prn = prnInput.value.trim();
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const interests = document.getElementById('interests').value.trim();
+    e.preventDefault();
+
+    showMessage(msg, '');
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account...';
+
+    const name =
+      document.getElementById('name').value.trim();
+
+    const prn =
+      document.getElementById('prn').value.trim();
+
+    const email =
+      document.getElementById('email').value.trim();
+
+    const password =
+      document.getElementById('password').value;
+
+    const interests =
+      document.getElementById('interests').value.trim();
 
     try {
-      await apiRequest('/auth/register', 'POST', { name, prn, email, password, role, interests });
-      showMessage(msg, 'Account created! Redirecting to login...', false);
-      setTimeout(() => { window.location.href = 'login.html'; }, 1200);
+
+      await apiRequest(
+        '/auth/register',
+        'POST',
+        {
+          name,
+          prn,
+          email,
+          password,
+          role: 'participant',
+          interests
+        }
+      );
+
+      showMessage(
+        msg,
+        'Account created successfully! Redirecting to login...',
+        false
+      );
+
+      setTimeout(() => {
+        window.location.href = 'login.html';
+      }, 1200);
+
     } catch (err) {
+
       showMessage(msg, err.message);
+
       submitBtn.disabled = false;
-      submitBtn.textContent = role === 'admin' ? 'Create admin account' : 'Create account';
+      submitBtn.textContent = 'Create account';
     }
+
   });
+
 </script>
 
 </body>
