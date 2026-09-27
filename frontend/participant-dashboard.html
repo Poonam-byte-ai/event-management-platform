@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browse Events — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Management</div>
+    <nav>
+      <a href="participant-dashboard.html" class="active">Browse Events</a>
+      <a href="my-registrations.html">My Registrations</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="userName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Browse Events</h1>
+    <p class="page-subtitle">Everything happening on the platform</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div style="padding:16px 18px;">
+        <label for="interestsInput" style="font-weight:600; font-size:13px;">Your interests</label>
+        <p style="font-size:12px; color:var(--text-muted); margin:2px 0 8px;">
+          Comma-separated (e.g. "AI, music, coding"). Events tagged with matching topics will show up under Recommended below.
+        </p>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="interestsInput" placeholder="AI, coding, music" style="flex:1;">
+          <button class="btn btn-small" id="saveInterestsBtn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <h2 id="recommendedHeading" style="display:none; font-size:16px; margin-bottom:10px;">Recommended for you</h2>
+    <div id="recommendedGrid" class="event-card-grid" style="display:none; margin-bottom:24px;"></div>
+
+    <h2 style="font-size:16px; margin-bottom:10px;">All Events</h2>
+    <div id="grid" class="event-card-grid">
+      <div class="loading">Loading events...</div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireParticipant();
+  document.getElementById('userName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const grid = document.getElementById('grid');
+  const recommendedGrid = document.getElementById('recommendedGrid');
+  const recommendedHeading = document.getElementById('recommendedHeading');
+  const interestsInput = document.getElementById('interestsInput');
+  const saveInterestsBtn = document.getElementById('saveInterestsBtn');
+
+  function badge(type, text) {
+    return `<span class="badge badge-${type}">${text}</span>`;
+  }
+
+  let registeredEventIds = new Set();
+
+  function eventCard(e) {
+    const isRegistered = registeredEventIds.has(e.id);
+    return `
+      <div class="event-card">
+        <h3>${e.title}</h3>
+        <div class="meta">
+          ${e.event_date.slice(0,10)} · ${e.event_time.slice(0,5)}<br>
+          ${e.venue}<br>
+          ${e.seats_remaining} of ${e.capacity} seats left
+        </div>
+        <div style="margin-bottom:14px;">
+          ${badge(e.event_type === 'compulsory' ? 'compulsory' : 'optional', e.event_type)}
+          ${badge(e.registration_open ? 'open' : 'closed', e.registration_open ? 'Registration open' : 'Registration closed')}
+          ${isRegistered ? badge('open', 'Registered') : ''}
+        </div>
+        <a class="btn btn-small" href="event-details.html#${e.id}">View details</a>
+      </div>
+    `;
+  }
+
+  async function load() {
+    // Fetch events and "my registrations" as two independent calls, not a
+    // Promise.all — the badge lookup should never be able to take down the
+    // whole "All Events" list if it fails for any reason.
+    let events;
+    try {
+      // /events/recommended returns EVERY event (so "All Events" still shows
+      // everything — including events the participant has already registered
+      // for, just marked with a "Registered" badge), each tagged with
+      // match_count against the participant's stored interests — simple
+      // word-overlap, not any kind of AI model.
+      const data = await apiRequest('/events/recommended');
+      events = data.events;
+      interestsInput.value = data.interests || '';
+    } catch (err) {
+      showMessage(msg, err.message);
+      grid.innerHTML = '';
+      recommendedGrid.style.display = 'none';
+      recommendedHeading.style.display = 'none';
+      return;
+    }
+
+    try {
+      const myRegsData = await apiRequest('/registrations/me');
+      registeredEventIds = new Set(myRegsData.registrations.map(r => r.event_id));
+    } catch (err) {
+      // Non-fatal: worst case the "Registered" badge doesn't show up yet.
+      registeredEventIds = new Set();
+    }
+
+    if (events.length === 0) {
+      grid.innerHTML = '<div class="empty-state">No events have been posted yet. Check back soon.</div>';
+      recommendedGrid.style.display = 'none';
+      recommendedHeading.style.display = 'none';
+      return;
+    }
+
+    const recommended = events.filter(e => e.match_count > 0);
+    if (recommended.length > 0) {
+      recommendedHeading.style.display = 'block';
+      recommendedGrid.style.display = 'grid';
+      recommendedGrid.innerHTML = recommended.map(eventCard).join('');
+    } else {
+      recommendedHeading.style.display = 'none';
+      recommendedGrid.style.display = 'none';
+    }
+
+    grid.innerHTML = events.map(eventCard).join('');
+  }
+
+  saveInterestsBtn.addEventListener('click', async () => {
+    saveInterestsBtn.disabled = true;
+    try {
+      await apiRequest('/auth/interests', 'PATCH', { interests: interestsInput.value.trim() });
+      await load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    } finally {
+      saveInterestsBtn.disabled = false;
+    }
+  });
+
+  load();
+
+  // If the browser restores this page from its back/forward cache (e.g. the
+  // user hits "Back" after visiting an event they registered for), the page
+  // can reappear with whatever it last showed instead of running fresh —
+  // so force a reload of the data in that case.
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) load();
+  });
+</script>
+
+</body>
+</html>

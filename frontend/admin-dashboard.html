@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Dashboard — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Admin</div>
+    <nav>
+      <a href="admin-dashboard.html" class="active">Dashboard</a>
+      <a href="events.html">Manage Events</a>
+      <a href="create-event.html">Create Event</a>
+      <a href="speakers.html">Speakers</a>
+      <a href="sessions.html">Sessions</a>
+      <a href="participants.html">Participants</a>
+      <a href="attendance.html">Attendance / QR</a>
+      <a href="feedback.html">Feedback</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="adminName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Dashboard</h1>
+    <p class="page-subtitle">Overview of all events and registrations</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="stat-grid" id="statGrid">
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Total events</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Registrations open</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Total registrations</div></div>
+      <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Seats remaining</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span>Events</span>
+        <a href="create-event.html" class="btn btn-small">+ New event</a>
+      </div>
+      <div id="eventsTableWrap">
+        <div class="loading">Loading events...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAdmin();
+  document.getElementById('adminName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const statGrid = document.getElementById('statGrid');
+  const tableWrap = document.getElementById('eventsTableWrap');
+
+  function badge(type, text) {
+    return `<span class="badge badge-${type}">${text}</span>`;
+  }
+
+  function renderStats(events) {
+    const totalEvents = events.length;
+    const openCount = events.filter(e => e.registration_open).length;
+    const totalRegistered = events.reduce((sum, e) => sum + Number(e.registered_count), 0);
+    const totalSeatsLeft = events.reduce((sum, e) => sum + Number(e.seats_remaining), 0);
+
+    const cards = [
+      [totalEvents, 'Total events'],
+      [openCount, 'Registrations open'],
+      [totalRegistered, 'Total registrations'],
+      [totalSeatsLeft, 'Seats remaining'],
+    ];
+
+    statGrid.innerHTML = cards.map(([value, label]) => `
+      <div class="stat-card">
+        <div class="stat-value">${value}</div>
+        <div class="stat-label">${label}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderTable(events) {
+    if (events.length === 0) {
+      tableWrap.innerHTML = '<div class="empty-state">No events yet. Create your first event to get started.</div>';
+      return;
+    }
+
+    const rows = events.map(e => `
+      <tr>
+        <td>${e.title}</td>
+        <td>${e.event_date} · ${e.event_time}</td>
+        <td>${e.venue}</td>
+        <td>${badge(e.event_type === 'compulsory' ? 'compulsory' : 'optional', e.event_type)}</td>
+        <td>${e.registered_count} / ${e.capacity}</td>
+        <td>${badge(e.registration_open ? 'open' : 'closed', e.registration_open ? 'Open' : 'Closed')}</td>
+      </tr>
+    `).join('');
+
+    tableWrap.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th><th>Date / time</th><th>Venue</th><th>Type</th><th>Registered</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  async function load() {
+    try {
+      const data = await apiRequest('/events');
+      renderStats(data.events);
+      renderTable(data.events);
+    } catch (err) {
+      showMessage(msg, err.message);
+      tableWrap.innerHTML = '';
+    }
+  }
+
+  load();
+</script>
+
+</body>
+</html>

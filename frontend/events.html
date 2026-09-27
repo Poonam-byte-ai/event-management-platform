@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manage Events — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Admin</div>
+    <nav>
+      <a href="admin-dashboard.html">Dashboard</a>
+      <a href="events.html" class="active">Manage Events</a>
+      <a href="create-event.html">Create Event</a>
+      <a href="speakers.html">Speakers</a>
+      <a href="sessions.html">Sessions</a>
+      <a href="participants.html">Participants</a>
+      <a href="attendance.html">Attendance / QR</a>
+      <a href="feedback.html">Feedback</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="adminName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Manage Events</h1>
+    <p class="page-subtitle">Events you've created</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <span>Your events</span>
+        <a href="create-event.html" class="btn btn-small">+ New event</a>
+      </div>
+      <div id="tableWrap"><div class="loading">Loading events...</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAdmin();
+  document.getElementById('adminName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const tableWrap = document.getElementById('tableWrap');
+
+  function badge(type, text) {
+    return `<span class="badge badge-${type}">${text}</span>`;
+  }
+
+  async function toggleRegistration(id, open) {
+    try {
+      await apiRequest(`/events/${id}/registration`, 'PATCH', { open });
+      load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  async function deleteEvent(id, title) {
+    if (!confirm(`Delete "${title}"? This also removes its sessions, registrations, attendance and feedback. This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await apiRequest(`/events/${id}`, 'DELETE');
+      load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  async function load() {
+    try {
+      const data = await apiRequest('/events');
+      const events = data.events;
+
+      if (events.length === 0) {
+        tableWrap.innerHTML = '<div class="empty-state">You haven\'t created any events yet. Click "New event" to get started.</div>';
+        return;
+      }
+
+      const rows = events.map(e => `
+        <tr>
+          <td>${e.title}</td>
+          <td>${e.event_date.slice(0,10)} · ${e.event_time.slice(0,5)}</td>
+          <td>${e.venue}</td>
+          <td>${badge(e.event_type === 'compulsory' ? 'compulsory' : 'optional', e.event_type)}</td>
+          <td>${e.registered_count} / ${e.capacity}</td>
+          <td>${badge(e.registration_open ? 'open' : 'closed', e.registration_open ? 'Open' : 'Closed')}</td>
+          <td>
+            <div class="row-actions">
+              <a class="btn btn-secondary btn-small" href="create-event.html?id=${e.id}">Edit</a>
+              <button class="btn btn-secondary btn-small" onclick="toggleRegistration(${e.id}, ${!e.registration_open})">
+                ${e.registration_open ? 'Close reg.' : 'Open reg.'}
+              </button>
+              <a class="btn btn-secondary btn-small" href="sessions.html?eventId=${e.id}">Sessions</a>
+              <a class="btn btn-secondary btn-small" href="participants.html?eventId=${e.id}">Participants</a>
+              <a class="btn btn-secondary btn-small" href="attendance.html?eventId=${e.id}">Attendance</a>
+              <a class="btn btn-secondary btn-small" href="feedback.html?eventId=${e.id}">Feedback</a>
+              <button class="btn btn-danger btn-small" onclick="deleteEvent(${e.id}, '${e.title.replace(/'/g, "\\'")}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      tableWrap.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Title</th><th>Date / time</th><th>Venue</th><th>Type</th><th>Registered</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    } catch (err) {
+      showMessage(msg, err.message);
+      tableWrap.innerHTML = '';
+    }
+  }
+
+  load();
+</script>
+
+</body>
+</html>

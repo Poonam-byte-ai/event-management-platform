@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speakers — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Admin</div>
+    <nav>
+      <a href="admin-dashboard.html">Dashboard</a>
+      <a href="events.html">Manage Events</a>
+      <a href="create-event.html">Create Event</a>
+      <a href="speakers.html" class="active">Speakers</a>
+      <a href="sessions.html">Sessions</a>
+      <a href="participants.html">Participants</a>
+      <a href="attendance.html">Attendance / QR</a>
+      <a href="feedback.html">Feedback</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="adminName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Speakers</h1>
+    <p class="page-subtitle">Shared across all events — add a speaker once, use them in any session</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="card section-block">
+      <div class="card-header">Add a speaker</div>
+      <div style="padding: 20px 22px;">
+        <form id="speakerForm">
+          <div class="field-row">
+            <div class="field"><label for="name">Name</label><input type="text" id="name" required></div>
+            <div class="field"><label for="organization">Organization</label><input type="text" id="organization"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="designation">Designation</label><input type="text" id="designation"></div>
+            <div class="field"><label for="contact">Contact</label><input type="text" id="contact"></div>
+          </div>
+          <div class="field"><label for="bio">Bio</label><textarea id="bio" rows="2"></textarea></div>
+          <button type="submit" class="btn" id="submitBtn">Add speaker</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">All speakers</div>
+      <div id="tableWrap"><div class="loading">Loading speakers...</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAdmin();
+  document.getElementById('adminName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const tableWrap = document.getElementById('tableWrap');
+  let speakers = [];
+  let editingId = null;
+
+  function renderTable() {
+    if (speakers.length === 0) {
+      tableWrap.innerHTML = '<div class="empty-state">No speakers yet. Add one above.</div>';
+      return;
+    }
+
+    const rows = speakers.map(s => {
+      if (s.id === editingId) {
+        return `
+          <tr>
+            <td><input class="inline-edit-input" id="e_name">${''}</td>
+            <td><input class="inline-edit-input" id="e_organization"></td>
+            <td><input class="inline-edit-input" id="e_designation"></td>
+            <td><input class="inline-edit-input" id="e_contact"></td>
+            <td colspan="2">
+              <div class="row-actions">
+                <button class="btn btn-small" onclick="saveEdit(${s.id})">Save</button>
+                <button class="btn btn-secondary btn-small" onclick="cancelEdit()">Cancel</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }
+      return `
+        <tr>
+          <td>${s.name}</td>
+          <td>${s.organization || '—'}</td>
+          <td>${s.designation || '—'}</td>
+          <td>${s.contact || '—'}</td>
+          <td><button class="btn btn-secondary btn-small" onclick="startEdit(${s.id})">Edit</button></td>
+          <td><button class="btn btn-danger btn-small" onclick="deleteSpeaker(${s.id})">Delete</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    tableWrap.innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>Organization</th><th>Designation</th><th>Contact</th><th></th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    if (editingId) {
+      const s = speakers.find(x => x.id === editingId);
+      document.getElementById('e_name').value = s.name;
+      document.getElementById('e_organization').value = s.organization || '';
+      document.getElementById('e_designation').value = s.designation || '';
+      document.getElementById('e_contact').value = s.contact || '';
+    }
+  }
+
+  function startEdit(id) { editingId = id; renderTable(); }
+  function cancelEdit() { editingId = null; renderTable(); }
+
+  async function saveEdit(id) {
+    const s = speakers.find(x => x.id === id);
+    try {
+      await apiRequest(`/speakers/${id}`, 'PUT', {
+        name: document.getElementById('e_name').value.trim(),
+        organization: document.getElementById('e_organization').value.trim(),
+        designation: document.getElementById('e_designation').value.trim(),
+        contact: document.getElementById('e_contact').value.trim(),
+        bio: s.bio || '',
+      });
+      editingId = null;
+      await load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  async function deleteSpeaker(id) {
+    const s = speakers.find(x => x.id === id);
+    if (!confirm(`Delete speaker "${s ? s.name : ''}"? This can't be undone.`)) return;
+    try {
+      await apiRequest(`/speakers/${id}`, 'DELETE');
+      await load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  async function load() {
+    try {
+      const data = await apiRequest('/speakers');
+      speakers = data.speakers;
+      renderTable();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  document.getElementById('speakerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    showMessage(msg, '');
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+
+    try {
+      await apiRequest('/speakers', 'POST', {
+        name: document.getElementById('name').value.trim(),
+        organization: document.getElementById('organization').value.trim(),
+        designation: document.getElementById('designation').value.trim(),
+        contact: document.getElementById('contact').value.trim(),
+        bio: document.getElementById('bio').value.trim(),
+      });
+      e.target.reset();
+      await load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  load();
+</script>
+
+</body>
+</html>

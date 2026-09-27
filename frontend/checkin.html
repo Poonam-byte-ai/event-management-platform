@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Check-in — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="auth-shell">
+  <div class="auth-card">
+    <h1>Event Check-in</h1>
+    <p class="subtitle">Marking your attendance...</p>
+
+    <div id="msg" class="msg"></div>
+    <div id="body"><div class="loading">Checking you in...</div></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  // This page is what the attendance QR code now links to. Whoever scans
+  // it with their phone's camera / Google Lens lands here with the event
+  // and token in the URL, and we mark their attendance automatically.
+  const eventId = getQueryParam('eventId');
+  const token = getQueryParam('token');
+  const msg = document.getElementById('msg');
+  const body = document.getElementById('body');
+
+  async function run() {
+    if (!eventId || !token) {
+      body.innerHTML = '<p>This check-in link is missing information. Please scan the QR code again.</p>';
+      return;
+    }
+
+    // Not logged in yet — send to login, then bounce right back here so
+    // attendance still gets marked automatically after they sign in.
+    if (!getToken()) {
+      window.location.href = `login.html?returnTo=${encodeURIComponent(window.location.href)}`;
+      return;
+    }
+
+    if (getRole() !== 'participant') {
+      body.innerHTML = '<p>Only participant accounts can check in to events. Log out and sign in with your participant account to continue.</p>';
+      return;
+    }
+
+    try {
+      await apiRequest(`/events/${eventId}/attendance/verify`, 'POST', { token });
+      body.innerHTML = `
+        <p style="color: var(--success); font-weight:600; font-size:16px; margin-bottom:6px;">✓ You're checked in!</p>
+        <p class="subtitle" style="margin-bottom:18px;">Your attendance has been recorded for this event.</p>
+        <a class="btn btn-block" href="my-registrations.html">Go to My Registrations</a>
+      `;
+    } catch (err) {
+      showMessage(msg, err.message);
+      body.innerHTML = `<a class="btn btn-secondary btn-block" href="my-registrations.html">Go to My Registrations</a>`;
+    }
+  }
+
+  run();
+</script>
+
+</body>
+</html>

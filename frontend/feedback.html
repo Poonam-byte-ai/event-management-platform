@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedback — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Admin</div>
+    <nav>
+      <a href="admin-dashboard.html">Dashboard</a>
+      <a href="events.html">Manage Events</a>
+      <a href="create-event.html">Create Event</a>
+      <a href="speakers.html">Speakers</a>
+      <a href="sessions.html">Sessions</a>
+      <a href="participants.html">Participants</a>
+      <a href="attendance.html">Attendance / QR</a>
+      <a href="feedback.html" class="active">Feedback</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="adminName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Feedback</h1>
+    <p class="page-subtitle">What attendees said about one of your events</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="picker-bar">
+      <label for="eventPicker">Event:</label>
+      <select id="eventPicker"><option value="">Loading events...</option></select>
+    </div>
+
+    <div class="card" id="content" style="display:none;">
+      <div class="card-header">Submitted feedback</div>
+      <div id="tableWrap"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAdmin();
+  document.getElementById('adminName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const eventPicker = document.getElementById('eventPicker');
+  const content = document.getElementById('content');
+  const tableWrap = document.getElementById('tableWrap');
+
+  async function onEventChosen() {
+    if (!eventPicker.value) { content.style.display = 'none'; return; }
+    content.style.display = 'block';
+    tableWrap.innerHTML = '<div class="loading">Loading...</div>';
+    try {
+      const data = await apiRequest(`/events/${eventPicker.value}/feedback`);
+      const items = data.feedback;
+
+      if (items.length === 0) {
+        tableWrap.innerHTML = '<div class="empty-state">No feedback submitted for this event yet.</div>';
+        return;
+      }
+
+      const avg = (items.reduce((sum, i) => sum + i.rating, 0) / items.length).toFixed(1);
+
+      const rows = items.map(i => `
+        <tr>
+          <td>${i.name}</td>
+          <td>${'★'.repeat(i.rating)}${'☆'.repeat(5 - i.rating)}</td>
+          <td>${i.comments || '—'}</td>
+          <td>${formatDateTime(i.submitted_at)}</td>
+        </tr>
+      `).join('');
+
+      tableWrap.innerHTML = `
+        <div style="padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-muted);">
+          Average rating: <strong style="color: var(--text);">${avg} / 5</strong> from ${items.length} response(s)
+        </div>
+        <table>
+          <thead><tr><th>Participant</th><th>Rating</th><th>Comments</th><th>Submitted</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  eventPicker.addEventListener('change', onEventChosen);
+
+  (async () => {
+    try {
+      const data = await apiRequest('/events');
+      const events = data.events;
+      if (events.length === 0) {
+        eventPicker.innerHTML = '<option value="">You have no events yet</option>';
+        return;
+      }
+      eventPicker.innerHTML = '<option value="">Choose an event...</option>' +
+        events.map(e => `<option value="${e.id}">${e.title} — ${e.event_date.slice(0,10)}</option>`).join('');
+
+      const preselect = getQueryParam('eventId');
+      if (preselect && events.some(e => String(e.id) === preselect)) {
+        eventPicker.value = preselect;
+        onEventChosen();
+      }
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  })();
+</script>
+
+</body>
+</html>

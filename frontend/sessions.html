@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sessions — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Admin</div>
+    <nav>
+      <a href="admin-dashboard.html">Dashboard</a>
+      <a href="events.html">Manage Events</a>
+      <a href="create-event.html">Create Event</a>
+      <a href="speakers.html">Speakers</a>
+      <a href="sessions.html" class="active">Sessions</a>
+      <a href="participants.html">Participants</a>
+      <a href="attendance.html">Attendance / QR</a>
+      <a href="feedback.html">Feedback</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="adminName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Sessions</h1>
+    <p class="page-subtitle">Add and manage sessions for one of your events</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="picker-bar">
+      <label for="eventPicker">Event:</label>
+      <select id="eventPicker"><option value="">Loading events...</option></select>
+    </div>
+
+    <div id="content" style="display:none;">
+      <div class="card section-block">
+        <div class="card-header">Add a session</div>
+        <div style="padding: 20px 22px;">
+          <form id="sessionForm">
+            <div class="field">
+              <label for="session_name">Session name</label>
+              <input type="text" id="session_name" required>
+            </div>
+            <div class="field">
+              <label for="speaker_id">Speaker</label>
+              <select id="speaker_id" required><option value="">Select a speaker...</option></select>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="start_date">Start date</label>
+                <input type="date" id="start_date" required>
+                <label style="margin-top:8px;">Start time</label>
+                <div class="time-picker-row">
+                  <select id="start_time_hour" class="time-select"></select>
+                  <select id="start_time_minute" class="time-select"></select>
+                  <select id="start_time_ampm" class="time-select"></select>
+                </div>
+              </div>
+              <div class="field">
+                <label for="end_date">End date</label>
+                <input type="date" id="end_date" required>
+                <label style="margin-top:8px;">End time</label>
+                <div class="time-picker-row">
+                  <select id="end_time_hour" class="time-select"></select>
+                  <select id="end_time_minute" class="time-select"></select>
+                  <select id="end_time_ampm" class="time-select"></select>
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn" id="submitBtn">Add session</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Sessions for this event</div>
+        <div id="tableWrap"><div class="loading">Loading sessions...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAdmin();
+  document.getElementById('adminName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const eventPicker = document.getElementById('eventPicker');
+  const content = document.getElementById('content');
+  const tableWrap = document.getElementById('tableWrap');
+  const speakerSelect = document.getElementById('speaker_id');
+
+  let speakers = [];
+  let sessions = [];
+  let editingId = null;
+
+  populateTimeSelects('start_time');
+  populateTimeSelects('end_time');
+
+  async function loadSpeakers() {
+    const data = await apiRequest('/speakers');
+    speakers = data.speakers;
+    speakerSelect.innerHTML = '<option value="">Select a speaker...</option>' +
+      speakers.map(s => `<option value="${s.id}">${s.name}${s.organization ? ' — ' + s.organization : ''}</option>`).join('');
+  }
+
+  function renderSessions() {
+    if (sessions.length === 0) {
+      tableWrap.innerHTML = '<div class="empty-state">No sessions yet for this event.</div>';
+      return;
+    }
+
+    const rows = sessions.map(s => {
+      if (s.id === editingId) {
+        const speakerOptions = speakers.map(sp => `<option value="${sp.id}" ${sp.id === s.speaker_id ? 'selected' : ''}>${sp.name}</option>`).join('');
+        return `
+          <tr>
+            <td><input class="inline-edit-input" id="e_name" value="${s.session_name}"></td>
+            <td><select class="inline-edit-input" id="e_speaker">${speakerOptions}</select></td>
+            <td>
+              <input class="inline-edit-input" type="date" id="e_start_date" value="${s.start_time.slice(0,10)}">
+              <div class="time-picker-row">
+                <select id="e_start_hour" class="time-select"></select>
+                <select id="e_start_minute" class="time-select"></select>
+                <select id="e_start_ampm" class="time-select"></select>
+              </div>
+            </td>
+            <td>
+              <input class="inline-edit-input" type="date" id="e_end_date" value="${s.end_time.slice(0,10)}">
+              <div class="time-picker-row">
+                <select id="e_end_hour" class="time-select"></select>
+                <select id="e_end_minute" class="time-select"></select>
+                <select id="e_end_ampm" class="time-select"></select>
+              </div>
+            </td>
+            <td>
+              <div class="row-actions">
+                <button class="btn btn-small" onclick="saveEdit(${s.id})">Save</button>
+                <button class="btn btn-secondary btn-small" onclick="cancelEdit()">Cancel</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }
+      return `
+        <tr>
+          <td>${s.session_name}</td>
+          <td>${s.speaker_name}</td>
+          <td>${formatDateTime(s.start_time)}</td>
+          <td>${formatDateTime(s.end_time)}</td>
+          <td><button class="btn btn-secondary btn-small" onclick="startEdit(${s.id})">Edit</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    tableWrap.innerHTML = `
+      <table>
+        <thead><tr><th>Session</th><th>Speaker</th><th>Start</th><th>End</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    if (editingId) {
+      const s = sessions.find(x => x.id === editingId);
+      populateTimeSelects('e_start');
+      populateTimeSelects('e_end');
+      setTimeSelects('e_start', s.start_time.slice(11, 16));
+      setTimeSelects('e_end', s.end_time.slice(11, 16));
+    }
+  }
+
+  function startEdit(id) { editingId = id; renderSessions(); }
+  function cancelEdit() { editingId = null; renderSessions(); }
+
+  async function saveEdit(id) {
+    showMessage(msg, '');
+    try {
+      await apiRequest(`/events/${eventPicker.value}/sessions/${id}`, 'PUT', {
+        speaker_id: Number(document.getElementById('e_speaker').value),
+        session_name: document.getElementById('e_name').value.trim(),
+        start_time: `${document.getElementById('e_start_date').value} ${readTimeSelects('e_start')}:00`,
+        end_time: `${document.getElementById('e_end_date').value} ${readTimeSelects('e_end')}:00`,
+      });
+      editingId = null;
+      await loadSessions();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  async function loadSessions() {
+    const data = await apiRequest(`/events/${eventPicker.value}/sessions`);
+    sessions = data.sessions;
+    renderSessions();
+  }
+
+  async function onEventChosen() {
+    if (!eventPicker.value) { content.style.display = 'none'; return; }
+    content.style.display = 'block';
+    tableWrap.innerHTML = '<div class="loading">Loading sessions...</div>';
+    try {
+      await loadSessions();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  eventPicker.addEventListener('change', onEventChosen);
+
+  document.getElementById('sessionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    showMessage(msg, '');
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+
+    try {
+      await apiRequest(`/events/${eventPicker.value}/sessions`, 'POST', {
+        speaker_id: Number(speakerSelect.value),
+        session_name: document.getElementById('session_name').value.trim(),
+        start_time: `${document.getElementById('start_date').value} ${readTimeSelects('start_time')}:00`,
+        end_time: `${document.getElementById('end_date').value} ${readTimeSelects('end_time')}:00`,
+      });
+      e.target.reset();
+      populateTimeSelects('start_time');
+      populateTimeSelects('end_time');
+      await loadSessions();
+    } catch (err) {
+      showMessage(msg, err.message);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  (async () => {
+    try {
+      await loadSpeakers();
+      const data = await apiRequest('/events');
+      const events = data.events;
+      if (events.length === 0) {
+        eventPicker.innerHTML = '<option value="">You have no events yet</option>';
+        return;
+      }
+      eventPicker.innerHTML = '<option value="">Choose an event...</option>' +
+        events.map(e => `<option value="${e.id}">${e.title} — ${e.event_date.slice(0,10)}</option>`).join('');
+
+      const preselect = getQueryParam('eventId');
+      if (preselect && events.some(e => String(e.id) === preselect)) {
+        eventPicker.value = preselect;
+        onEventChosen();
+      }
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  })();
+</script>
+
+</body>
+</html>

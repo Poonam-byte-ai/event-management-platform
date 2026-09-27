@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Participants — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Admin</div>
+    <nav>
+      <a href="admin-dashboard.html">Dashboard</a>
+      <a href="events.html">Manage Events</a>
+      <a href="create-event.html">Create Event</a>
+      <a href="speakers.html">Speakers</a>
+      <a href="sessions.html">Sessions</a>
+      <a href="participants.html" class="active">Participants</a>
+      <a href="attendance.html">Attendance / QR</a>
+      <a href="feedback.html">Feedback</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="adminName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Participants</h1>
+    <p class="page-subtitle">Who has registered for one of your events</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="picker-bar">
+      <label for="eventPicker">Event:</label>
+      <select id="eventPicker"><option value="">Loading events...</option></select>
+    </div>
+
+    <div class="card" id="content" style="display:none;">
+      <div class="card-header">Registrants</div>
+      <div id="tableWrap"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAdmin();
+  document.getElementById('adminName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const eventPicker = document.getElementById('eventPicker');
+  const content = document.getElementById('content');
+  const tableWrap = document.getElementById('tableWrap');
+
+  async function onEventChosen() {
+    if (!eventPicker.value) { content.style.display = 'none'; return; }
+    content.style.display = 'block';
+    tableWrap.innerHTML = '<div class="loading">Loading...</div>';
+    try {
+      const data = await apiRequest(`/events/${eventPicker.value}/registrations`);
+      const regs = data.registrations;
+
+      if (regs.length === 0) {
+        tableWrap.innerHTML = '<div class="empty-state">No one has registered for this event yet.</div>';
+        return;
+      }
+
+      const rows = regs.map(r => `
+        <tr>
+          <td>${r.name}</td>
+          <td>${r.email}</td>
+          <td>${r.prn || '—'}</td>
+          <td>${formatDateTime(r.registered_at)}</td>
+        </tr>
+      `).join('');
+
+      tableWrap.innerHTML = `
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>PRN</th><th>Registered at</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  eventPicker.addEventListener('change', onEventChosen);
+
+  (async () => {
+    try {
+      const data = await apiRequest('/events');
+      const events = data.events;
+      if (events.length === 0) {
+        eventPicker.innerHTML = '<option value="">You have no events yet</option>';
+        return;
+      }
+      eventPicker.innerHTML = '<option value="">Choose an event...</option>' +
+        events.map(e => `<option value="${e.id}">${e.title} — ${e.event_date.slice(0,10)}</option>`).join('');
+
+      const preselect = getQueryParam('eventId');
+      if (preselect && events.some(e => String(e.id) === preselect)) {
+        eventPicker.value = preselect;
+        onEventChosen();
+      }
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  })();
+</script>
+
+</body>
+</html>

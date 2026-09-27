@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Registrations — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  .scanner-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 1000; align-items: center; justify-content: center; padding: 16px;
+  }
+  .scanner-overlay.open { display: flex; }
+  .scanner-box {
+    background: #fff; border-radius: 10px; padding: 18px; width: 100%; max-width: 380px;
+  }
+  .scanner-box h3 { margin: 0 0 10px; font-size: 16px; }
+  #qrReader { width: 100%; }
+  .scanner-hint { font-size: 12px; color: var(--text-muted); margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Management</div>
+    <nav>
+      <a href="participant-dashboard.html">Browse Events</a>
+      <a href="my-registrations.html" class="active">My Registrations</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="userName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>My Registrations</h1>
+    <p class="page-subtitle">Check in with the day's code, and share feedback once you've attended</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div id="list"><div class="loading">Loading...</div></div>
+  </div>
+</div>
+
+<div class="scanner-overlay" id="scannerOverlay">
+  <div class="scanner-box">
+    <h3>Scan attendance QR</h3>
+    <div id="qrReader"></div>
+    <p class="scanner-hint">Point your camera at the QR code shown on the event screen.</p>
+    <div id="scannerMsg" class="msg"></div>
+    <button class="btn btn-secondary btn-block" onclick="closeScanner()">Cancel</button>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireParticipant();
+  document.getElementById('userName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const list = document.getElementById('list');
+  let openPanel = null; // event_id whose attendance/feedback form is expanded
+
+  function badge(type, text) {
+    return `<span class="badge badge-${type}">${text}</span>`;
+  }
+
+  function attendanceForm(eventId) {
+    return `
+      <div class="card" style="margin-top:10px; padding:16px 18px;">
+        <button class="btn btn-small" style="margin-bottom:12px;" onclick="openScanner(${eventId})">📷 Scan QR</button>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Or enter today's attendance code</label>
+          <input type="text" id="tokenInput_${eventId}" placeholder="e.g. a1b2c3...">
+        </div>
+        <button class="btn btn-small" onclick="submitAttendance(${eventId})">Submit</button>
+        <button class="btn btn-secondary btn-small" onclick="closePanel()">Cancel</button>
+      </div>
+    `;
+  }
+
+  function feedbackForm(eventId) {
+    return `
+      <div class="card" style="margin-top:10px; padding:16px 18px;">
+        <div class="field" style="margin-bottom:10px;">
+          <label>Rating</label>
+          <div class="rating-select" id="ratingSelect_${eventId}">
+            ${[1,2,3,4,5].map(n => `<button type="button" onclick="pickRating(${eventId}, ${n})" id="star_${eventId}_${n}">${n}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field">
+          <label>Comments (optional)</label>
+          <textarea id="commentsInput_${eventId}" rows="2"></textarea>
+        </div>
+        <button class="btn btn-small" onclick="submitFeedback(${eventId})">Submit feedback</button>
+        <button class="btn btn-secondary btn-small" onclick="closePanel()">Cancel</button>
+      </div>
+    `;
+  }
+
+  const ratings = {}; // eventId -> chosen rating
+
+  function pickRating(eventId, n) {
+    ratings[eventId] = n;
+    for (let i = 1; i <= 5; i++) {
+      document.getElementById(`star_${eventId}_${i}`).classList.toggle('selected', i <= n);
+    }
+  }
+
+  function openAttendancePanel(eventId) { openPanel = { eventId, type: 'attendance' }; render(); }
+  function openFeedbackPanel(eventId) { openPanel = { eventId, type: 'feedback' }; render(); }
+  function closePanel() { openPanel = null; render(); }
+
+  async function submitAttendance(eventId) {
+    showMessage(msg, '');
+    const token = document.getElementById(`tokenInput_${eventId}`).value.trim();
+    if (!token) return;
+    await markAttendance(eventId, token);
+  }
+
+  async function markAttendance(eventId, token) {
+    try {
+      await apiRequest(`/events/${eventId}/attendance/verify`, 'POST', { token });
+      openPanel = null;
+      await load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  // --- in-app camera QR scanner ------------------------------------------
+  // Uses the device camera to scan the code directly in the browser, as an
+  // alternative to leaving the app to use the phone's own camera / Google
+  // Lens (which also works, since the QR now encodes a checkin.html link).
+  let html5QrScanner = null;
+  let scanningForEventId = null;
+
+  function openScanner(eventId) {
+    scanningForEventId = eventId;
+    const overlay = document.getElementById('scannerOverlay');
+    const scannerMsg = document.getElementById('scannerMsg');
+    showMessage(scannerMsg, '');
+    overlay.classList.add('open');
+
+    html5QrScanner = new Html5Qrcode('qrReader');
+    html5QrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      onScanSuccess,
+      () => { /* per-frame "no QR found" — ignore, keep scanning */ }
+    ).catch((err) => {
+      showMessage(scannerMsg, 'Could not access the camera: ' + err);
+    });
+  }
+
+  function closeScanner() {
+    document.getElementById('scannerOverlay').classList.remove('open');
+    if (html5QrScanner) {
+      html5QrScanner.stop().then(() => html5QrScanner.clear()).catch(() => {});
+      html5QrScanner = null;
+    }
+  }
+
+  function onScanSuccess(decodedText) {
+    const { token, eventId: scannedEventId } = extractTokenFromScan(decodedText);
+    const eventId = scanningForEventId;
+    closeScanner();
+    if (scannedEventId && String(scannedEventId) !== String(eventId)) {
+      showMessage(msg, 'That QR code is for a different event.');
+      return;
+    }
+    markAttendance(eventId, token);
+  }
+
+  async function submitFeedback(eventId) {
+    showMessage(msg, '');
+    const rating = ratings[eventId];
+    if (!rating) { showMessage(msg, 'Please pick a rating from 1 to 5.'); return; }
+    const comments = document.getElementById(`commentsInput_${eventId}`).value.trim();
+    try {
+      await apiRequest(`/events/${eventId}/feedback`, 'POST', { rating, comments });
+      openPanel = null;
+      await load();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  let registrations = [];
+
+  function render() {
+    if (registrations.length === 0) {
+      list.innerHTML = '<div class="empty-state">You haven\'t registered for any events yet. <a href="participant-dashboard.html">Browse events</a></div>';
+      return;
+    }
+
+    list.innerHTML = registrations.map(r => {
+      let panelHtml = '';
+      if (openPanel && openPanel.eventId === r.event_id) {
+        panelHtml = openPanel.type === 'attendance' ? attendanceForm(r.event_id) : feedbackForm(r.event_id);
+      }
+
+      let actionsHtml = '';
+      if (!r.attended) {
+        actionsHtml = `<button class="btn btn-small" onclick="openAttendancePanel(${r.event_id})">Check in</button>`;
+      } else if (!r.feedback_submitted) {
+        actionsHtml = `<button class="btn btn-small" onclick="openFeedbackPanel(${r.event_id})">Give feedback</button>`;
+      } else {
+        actionsHtml = `<span style="color: var(--success); font-size:13px; font-weight:600;">✓ Feedback submitted</span>`;
+      }
+
+      return `
+        <div class="card section-block">
+          <div style="padding:18px 20px;">
+            <h3 style="margin:0 0 6px; font-size:16px;">${r.title}</h3>
+            <p style="margin:0 0 10px; font-size:13px; color:var(--text-muted);">
+              ${r.event_date.slice(0,10)} · ${r.event_time.slice(0,5)} · ${r.venue}
+            </p>
+            <div style="margin-bottom:12px;">
+              ${badge(r.event_type === 'compulsory' ? 'compulsory' : 'optional', r.event_type)}
+              ${badge(r.attended ? 'open' : 'closed', r.attended ? 'Attended' : 'Not attended yet')}
+            </div>
+            ${actionsHtml}
+            ${panelHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function load() {
+    try {
+      const data = await apiRequest('/registrations/me');
+      registrations = data.registrations;
+      render();
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  load();
+</script>
+
+</body>
+</html>

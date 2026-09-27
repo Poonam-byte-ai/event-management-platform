@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Details — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Management</div>
+    <nav>
+      <a href="participant-dashboard.html">Browse Events</a>
+      <a href="my-registrations.html">My Registrations</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="userName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <p><a href="participant-dashboard.html">← Back to all events</a></p>
+    <div id="msg" class="msg"></div>
+    <div id="body"><div class="loading">Loading event...</div></div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireParticipant();
+  document.getElementById('userName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const body = document.getElementById('body');
+  const eventId = (window.location.hash ? window.location.hash.slice(1) : '') || getQueryParam('id');
+
+  function badge(type, text) {
+    return `<span class="badge badge-${type}">${text}</span>`;
+  }
+
+  async function register() {
+    const btn = document.getElementById('registerBtn');
+    btn.disabled = true;
+    showMessage(msg, '');
+    try {
+      await apiRequest(`/events/${eventId}/registrations`, 'POST');
+      await render();
+    } catch (err) {
+      showMessage(msg, err.message);
+      btn.disabled = false;
+    }
+  }
+
+  async function render() {
+    if (!eventId) {
+      body.innerHTML = '<div class="empty-state">No event specified.</div>';
+      return;
+    }
+
+    try {
+      const [eventData, sessionsData, myRegsData] = await Promise.all([
+        apiRequest(`/events/${eventId}`),
+        apiRequest(`/events/${eventId}/sessions`),
+        apiRequest('/registrations/me'),
+      ]);
+
+      const e = eventData.event;
+      const sessions = sessionsData.sessions;
+      const isRegistered = myRegsData.registrations.some(r => r.event_id == eventId);
+
+      let actionHtml;
+      if (isRegistered) {
+        actionHtml = `<p style="color: var(--success); font-weight:600;">✓ You're registered for this event</p>`;
+      } else if (!e.registration_open) {
+        actionHtml = `<button class="btn" disabled>Registration closed</button>`;
+      } else if (e.seats_remaining <= 0) {
+        actionHtml = `<button class="btn" disabled>No seats remaining</button>`;
+      } else {
+        actionHtml = `<button class="btn" id="registerBtn" onclick="register()">Register for this event</button>`;
+      }
+
+      const sessionsHtml = sessions.length === 0
+        ? '<p style="color: var(--text-muted); font-size:14px;">No sessions have been added yet.</p>'
+        : `
+          <table>
+            <thead><tr><th>Session</th><th>Speaker</th><th>Start</th><th>End</th></tr></thead>
+            <tbody>
+              ${sessions.map(s => `
+                <tr>
+                  <td>${s.session_name}</td>
+                  <td>${s.speaker_name}${s.organization ? ' — ' + s.organization : ''}</td>
+                  <td>${formatDateTime(s.start_time)}</td>
+                  <td>${formatDateTime(s.end_time)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+      body.innerHTML = `
+        <h1>${e.title}</h1>
+        <p class="page-subtitle">
+          ${e.event_date.slice(0,10)} · ${e.event_time.slice(0,5)} · ${e.venue}
+        </p>
+        <div style="margin-bottom:18px;">
+          ${badge(e.event_type === 'compulsory' ? 'compulsory' : 'optional', e.event_type)}
+          ${badge(e.registration_open ? 'open' : 'closed', e.registration_open ? 'Registration open' : 'Registration closed')}
+        </div>
+        ${e.description ? `<p style="max-width:640px; color: var(--text); margin-bottom:20px;">${e.description}</p>` : ''}
+        <p style="font-size:14px; color: var(--text-muted); margin-bottom:20px;">${e.seats_remaining} of ${e.capacity} seats remaining</p>
+        <div style="margin-bottom:28px;">${actionHtml}</div>
+
+        <div class="card">
+          <div class="card-header">Sessions & speakers</div>
+          ${sessionsHtml}
+        </div>
+      `;
+    } catch (err) {
+      showMessage(msg, err.message);
+      body.innerHTML = '';
+    }
+  }
+
+  render();
+</script>
+
+</body>
+</html>

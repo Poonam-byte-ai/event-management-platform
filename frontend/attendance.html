@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance / QR — Event Management Platform</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="brand">Event Admin</div>
+    <nav>
+      <a href="admin-dashboard.html">Dashboard</a>
+      <a href="events.html">Manage Events</a>
+      <a href="create-event.html">Create Event</a>
+      <a href="speakers.html">Speakers</a>
+      <a href="sessions.html">Sessions</a>
+      <a href="participants.html">Participants</a>
+      <a href="attendance.html" class="active">Attendance / QR</a>
+      <a href="feedback.html">Feedback</a>
+    </nav>
+    <div class="signout">
+      Signed in as <strong id="adminName"></strong><br>
+      <button onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Attendance / QR</h1>
+    <p class="page-subtitle">Participants scan the QR (or tap "Scan QR" in their app) to check in instantly. It refreshes automatically.</p>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="picker-bar">
+      <label for="eventPicker">Event:</label>
+      <select id="eventPicker"><option value="">Loading events...</option></select>
+    </div>
+
+    <div id="content" style="display:none;">
+      <div class="card section-block">
+        <div class="token-box">
+          <div id="qrCode" style="display:flex; justify-content:center; margin-bottom:14px;"></div>
+          <p style="text-align:center; font-size:13px; color:var(--text-muted); margin:0 0 10px;">
+            Scan with a phone camera / Google Lens, or use "Scan QR" on the participant's My Registrations page.
+          </p>
+          <div class="token-value" id="tokenValue">—</div>
+          <div class="token-countdown" id="tokenCountdown"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span>Checked in so far</span>
+          <button class="btn btn-small btn-secondary" onclick="loadAttendanceList()">Refresh</button>
+        </div>
+        <div id="tableWrap"><div class="loading">Loading...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAdmin();
+  document.getElementById('adminName').textContent = getUserName();
+
+  const msg = document.getElementById('msg');
+  const eventPicker = document.getElementById('eventPicker');
+  const content = document.getElementById('content');
+  const tableWrap = document.getElementById('tableWrap');
+  const tokenValue = document.getElementById('tokenValue');
+  const tokenCountdown = document.getElementById('tokenCountdown');
+
+  let tokenPollTimer = null;
+  let countdownTimer = null;
+  let secondsLeft = 0;
+  let currentToken = null;
+  const qrCodeDiv = document.getElementById('qrCode');
+
+  function tickCountdown() {
+    if (secondsLeft <= 0) {
+      tokenCountdown.textContent = 'Refreshing...';
+      return;
+    }
+    secondsLeft -= 1;
+    tokenCountdown.textContent = `Expires in ${secondsLeft}s`;
+  }
+
+  async function pollToken() {
+    if (!eventPicker.value) return;
+    try {
+      const data = await apiRequest(`/events/${eventPicker.value}/attendance/token`);
+      tokenValue.textContent = data.token;
+      secondsLeft = data.seconds_remaining;
+
+      if (data.token !== currentToken) {
+        currentToken = data.token;
+        qrCodeDiv.innerHTML = '';
+        // Encode a link to checkin.html (not the bare token) so scanning
+        // with a normal camera app / Google Lens opens the check-in page
+        // and marks attendance directly, instead of just showing text.
+        const checkinUrl = buildCheckinUrl(eventPicker.value, data.token);
+        new QRCode(qrCodeDiv, { text: checkinUrl, width: 220, height: 220 });
+      }
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  async function loadAttendanceList() {
+    if (!eventPicker.value) return;
+    tableWrap.innerHTML = '<div class="loading">Loading...</div>';
+    try {
+      const data = await apiRequest(`/events/${eventPicker.value}/attendance`);
+      const rows = data.attendance;
+
+      if (rows.length === 0) {
+        tableWrap.innerHTML = '<div class="empty-state">No one has checked in yet.</div>';
+        return;
+      }
+
+      tableWrap.innerHTML = `
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>PRN</th><th>Checked in at</th></tr></thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr><td>${r.name}</td><td>${r.email}</td><td>${r.prn || '—'}</td><td>${formatDateTime(r.marked_at)}</td></tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  }
+
+  function stopTimers() {
+    if (tokenPollTimer) clearInterval(tokenPollTimer);
+    if (countdownTimer) clearInterval(countdownTimer);
+  }
+
+  async function onEventChosen() {
+    stopTimers();
+    if (!eventPicker.value) { content.style.display = 'none'; return; }
+    content.style.display = 'block';
+
+    await pollToken();
+    await loadAttendanceList();
+
+    tokenPollTimer = setInterval(pollToken, 5000);
+    countdownTimer = setInterval(tickCountdown, 1000);
+  }
+
+  eventPicker.addEventListener('change', onEventChosen);
+
+  (async () => {
+    try {
+      const data = await apiRequest('/events');
+      const events = data.events;
+      if (events.length === 0) {
+        eventPicker.innerHTML = '<option value="">You have no events yet</option>';
+        return;
+      }
+      eventPicker.innerHTML = '<option value="">Choose an event...</option>' +
+        events.map(e => `<option value="${e.id}">${e.title} — ${e.event_date.slice(0,10)}</option>`).join('');
+
+      const preselect = getQueryParam('eventId');
+      if (preselect && events.some(e => String(e.id) === preselect)) {
+        eventPicker.value = preselect;
+        onEventChosen();
+      }
+    } catch (err) {
+      showMessage(msg, err.message);
+    }
+  })();
+</script>
+
+</body>
+</html>
