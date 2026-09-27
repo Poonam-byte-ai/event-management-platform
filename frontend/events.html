@@ -14,7 +14,7 @@
     <nav>
       <a href="admin-dashboard.html">Dashboard</a>
       <a href="events.html" class="active">Manage Events</a>
-      <a href="create-event.html">Create Event</a>
+      <a href="new-event.html">Create Event</a>
       <a href="speakers.html">Speakers</a>
       <a href="sessions.html">Sessions</a>
       <a href="participants.html">Participants</a>
@@ -36,7 +36,7 @@
     <div class="card">
       <div class="card-header">
         <span>Your events</span>
-        <a href="create-event.html" class="btn btn-small">+ New event</a>
+        <a href="new-event.html" class="btn btn-small">+ New event</a>
       </div>
       <div id="tableWrap"><div class="loading">Loading events...</div></div>
     </div>
@@ -96,7 +96,7 @@
           <td>${badge(e.registration_open ? 'open' : 'closed', e.registration_open ? 'Open' : 'Closed')}</td>
           <td>
             <div class="row-actions">
-              <a class="btn btn-secondary btn-small" href="create-event.html?id=${e.id}">Edit</a>
+              <a class="btn btn-secondary btn-small" href="new-event.html?id=${e.id}">Edit</a>
               <button class="btn btn-secondary btn-small" onclick="toggleRegistration(${e.id}, ${!e.registration_open})">
                 ${e.registration_open ? 'Close reg.' : 'Open reg.'}
               </button>
