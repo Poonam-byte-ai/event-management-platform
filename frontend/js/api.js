@@ -1,5 +1,5 @@
 // Shared across every page. Talks to the Express backend on localhost:5000.
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE_URL = "https://event-management-platform-7exh.onrender.com/api";
 
 // --- session storage (JWT + basic user info) ---------------------------
 function getToken() { return localStorage.getItem('token'); }

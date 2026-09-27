@@ -1,8 +1,8 @@
 -- Event Management Platform — Schema
 -- Run this once against your MySQL database (local or Railway).
 
-CREATE DATABASE IF NOT EXISTS event_management;
-USE event_management;
+-- CREATE DATABASE IF NOT EXISTS event_management;
+-- USE event_management;
 
 -- 1. USERS (both admins and participants live here; role separates them)
 CREATE TABLE users (
