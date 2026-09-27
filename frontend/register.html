@@ -15,10 +15,33 @@
     <h1>Create your account</h1>
 
     <p class="subtitle">
-      Register as a participant to join events.
+      Register as a participant or organizer.
     </p>
 
     <div id="msg" class="msg"></div>
+
+    <!-- Account type -->
+    <div class="field">
+      <label>Account Type</label>
+
+      <div class="role-toggle">
+        <button
+          type="button"
+          id="tabParticipant"
+          class="btn active"
+        >
+          Participant
+        </button>
+
+        <button
+          type="button"
+          id="tabAdmin"
+          class="btn"
+        >
+          Organizer (Admin)
+        </button>
+      </div>
+    </div>
 
     <form id="registerForm">
 
@@ -32,16 +55,15 @@
         >
       </div>
 
-      <div class="field">
+      <div class="field" id="prnField">
         <label for="prn">PRN / Student ID</label>
         <input
           type="text"
           id="prn"
-          required
         >
       </div>
 
-      <div class="field">
+      <div class="field" id="interestsField">
         <label for="interests">
           Interests (comma-separated, e.g. "AI, music, coding")
         </label>
@@ -80,7 +102,7 @@
         class="btn btn-block"
         id="submitBtn"
       >
-        Create account
+        Create participant account
       </button>
 
     </form>
@@ -102,18 +124,77 @@
 
 <script>
 
-  // If the user is already logged in,
-  // redirect them to the appropriate dashboard.
-  if (getToken()) {
-    window.location.href =
-      getRole() === 'admin'
-        ? 'admin-dashboard.html'
-        : 'participant-dashboard.html';
-  }
+  let selectedRole = 'participant';
 
   const form = document.getElementById('registerForm');
   const msg = document.getElementById('msg');
   const submitBtn = document.getElementById('submitBtn');
+
+  const tabParticipant =
+    document.getElementById('tabParticipant');
+
+  const tabAdmin =
+    document.getElementById('tabAdmin');
+
+  const prnField =
+    document.getElementById('prnField');
+
+  const interestsField =
+    document.getElementById('interestsField');
+
+  const prnInput =
+    document.getElementById('prn');
+
+  const interestsInput =
+    document.getElementById('interests');
+
+
+  function selectRole(role) {
+
+    selectedRole = role;
+
+    if (role === 'participant') {
+
+      tabParticipant.classList.add('active');
+      tabAdmin.classList.remove('active');
+
+      prnField.style.display = 'block';
+      interestsField.style.display = 'block';
+
+      prnInput.required = true;
+
+      submitBtn.textContent =
+        'Create participant account';
+
+    } else {
+
+      tabAdmin.classList.add('active');
+      tabParticipant.classList.remove('active');
+
+      prnField.style.display = 'none';
+      interestsField.style.display = 'none';
+
+      prnInput.required = false;
+
+      submitBtn.textContent =
+        'Create organizer account';
+    }
+
+    showMessage(msg, '');
+  }
+
+
+  tabParticipant.addEventListener(
+    'click',
+    () => selectRole('participant')
+  );
+
+
+  tabAdmin.addEventListener(
+    'click',
+    () => selectRole('admin')
+  );
+
 
   form.addEventListener('submit', async (e) => {
 
@@ -127,17 +208,18 @@
     const name =
       document.getElementById('name').value.trim();
 
-    const prn =
-      document.getElementById('prn').value.trim();
-
     const email =
       document.getElementById('email').value.trim();
 
     const password =
       document.getElementById('password').value;
 
+    const prn =
+      prnInput.value.trim();
+
     const interests =
-      document.getElementById('interests').value.trim();
+      interestsInput.value.trim();
+
 
     try {
 
@@ -146,13 +228,18 @@
         'POST',
         {
           name,
-          prn,
           email,
           password,
-          role: 'participant',
-          interests
+          prn: selectedRole === 'participant'
+            ? prn
+            : null,
+          role: selectedRole,
+          interests: selectedRole === 'participant'
+            ? interests
+            : null
         }
       );
+
 
       showMessage(
         msg,
@@ -160,16 +247,28 @@
         false
       );
 
+
       setTimeout(() => {
-        window.location.href = 'login.html';
+
+        window.location.href =
+          'login.html';
+
       }, 1200);
+
 
     } catch (err) {
 
-      showMessage(msg, err.message);
+      showMessage(
+        msg,
+        err.message
+      );
 
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Create account';
+
+      submitBtn.textContent =
+        selectedRole === 'participant'
+          ? 'Create participant account'
+          : 'Create organizer account';
     }
 
   });
