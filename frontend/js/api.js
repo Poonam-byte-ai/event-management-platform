@@ -154,7 +154,7 @@ async function apiRequest(path, method = 'GET', body = null) {
 
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
